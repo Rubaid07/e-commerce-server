@@ -65,19 +65,7 @@ async function startServer() {
     res.send("Server Running with Stable MongoDB Connection!");
   });
 
-  app.get('/api/products', async (req, res) => {
-    try {
-      const { category } = req.query;
-      let q = {};
-      if (category && category !== "All") q.category = category;
-
-      const products = await db.collection("products").find(q).toArray();
-      res.json(products);
-    } catch (e) {
-      res.status(500).json({ message: "Failed to fetch products" });
-    }
-  });
-
+  
   app.post('/api/users/sync', async (req, res) => {
     try {
       const { email } = req.body;
@@ -91,51 +79,131 @@ async function startServer() {
       res.status(500).json({ message: "User sync failed" });
     }
   });
+  
+  
+  // 1. GET all products (no auth required for viewing)
+app.get('/api/products', async (req, res) => {
+  try {
+    const { category } = req.query;
+    let query = {};
+    if (category && category !== "All") query.category = category;
 
-  app.post('/api/products', authMiddleware, adminMiddleware, async (req, res) => {
-    try {
-      const newProd = { ...req.body, price: Number(req.body.price), inStock: true };
-      const result = await db.collection("products").insertOne(newProd);
-      res.status(201).json({ _id: result.insertedId, ...newProd });
-    } catch {
-      res.status(500).json({ message: "Failed to add product" });
-    }
-  });
+    const products = await db.collection("products").find(query).toArray();
+    res.json(products);
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    res.status(500).json({ message: "Failed to fetch products" });
+  }
+});
 
-  app.put('/api/products/:id', authMiddleware, adminMiddleware, async (req, res) => {
-    try {
-      const id = req.params.id;
-      const result = await db.collection("products").updateOne(
-        { _id: new ObjectId(id) },
-        { $set: req.body }
-      );
-      if (!result.matchedCount) return res.status(404).json({ message: "Not found" });
-      res.json({ message: "Updated" });
-    } catch {
-      res.status(500).json({ message: "Failed to update" });
+// 2. GET single product (no auth required)
+app.get('/api/products/:id', async (req, res) => {
+  try {
+    const product = await db.collection("products").findOne({ 
+      _id: new ObjectId(req.params.id) 
+    });
+    
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
     }
-  });
+    
+    res.json(product);
+  } catch (error) {
+    console.error("Error fetching product:", error);
+    res.status(500).json({ message: "Failed to fetch product" });
+  }
+});
 
-  app.delete('/api/products/:id', authMiddleware, adminMiddleware, async (req, res) => {
-    try {
-      const id = req.params.id;
-      const result = await db.collection("products").deleteOne({ _id: new ObjectId(id) });
-      if (!result.deletedCount) return res.status(404).json({ message: "Not found" });
-      res.json({ message: "Deleted" });
-    } catch {
-      res.status(400).json({ message: "Invalid ID" });
-    }
-  });
+// 3. POST create product (requires auth & admin)
+app.post('/api/products', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    console.log("Creating new product:", req.body);
+    
+    const productData = {
+      ...req.body,
+      price: parseFloat(req.body.price),
+      inStock: req.body.inStock !== false,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
 
-  app.get('/api/products/:id', async (req, res) => {
-    try {
-      const product = await db.collection("products").findOne({ _id: new ObjectId(req.params.id) });
-      if (!product) return res.status(404).json({ message: "Not found" });
-      res.json(product);
-    } catch {
-      res.status(500).json({ message: "Error" });
+    // Validate required fields
+    if (!productData.name || !productData.price || !productData.category) {
+      return res.status(400).json({ 
+        message: "Missing required fields: name, price, category" 
+      });
     }
-  });
+
+    const result = await db.collection("products").insertOne(productData);
+    
+    console.log("Product created with ID:", result.insertedId);
+    
+    res.status(201).json({ 
+      _id: result.insertedId, 
+      ...productData 
+    });
+  } catch (error) {
+    console.error("Error creating product:", error);
+    res.status(500).json({ message: "Failed to create product" });
+  }
+});
+
+// 4. PUT update product (requires auth & admin)
+app.put('/api/products/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const id = req.params.id;
+    console.log("Updating product:", id, "Data:", req.body);
+    
+    const updateData = {
+      ...req.body,
+      updatedAt: new Date()
+    };
+    
+    // Convert price to number if present
+    if (updateData.price !== undefined) {
+      updateData.price = parseFloat(updateData.price);
+    }
+
+    const result = await db.collection("products").updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateData }
+    );
+    
+    if (!result.matchedCount) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+    
+    console.log("Product updated:", result.modifiedCount, "documents");
+    
+    res.json({ message: "Product updated successfully" });
+  } catch (error) {
+    console.error("Error updating product:", error);
+    res.status(500).json({ message: "Failed to update product" });
+  }
+});
+
+// 5. DELETE product (requires auth & admin)
+app.delete('/api/products/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const id = req.params.id;
+    console.log("Deleting product:", id);
+    
+    const result = await db.collection("products").deleteOne({ 
+      _id: new ObjectId(id) 
+    });
+    
+    if (!result.deletedCount) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+    
+    console.log("Product deleted");
+    
+    res.json({ message: "Product deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting product:", error);
+    res.status(400).json({ message: "Failed to delete product" });
+  }
+});
 
   app.post("/api/orders", authMiddleware, async (req, res) => {
     const { items, total, ...data } = req.body;
@@ -326,6 +394,201 @@ async function startServer() {
       res.status(500).json({ message: "Failed to update" });
     }
   });
+
+
+  app.get('/api/orders', authMiddleware, async (req, res) => {
+  try {
+    // Check if user is admin
+    const user = await db.collection("users").findOne({ 
+      email: req.user.email 
+    });
+    
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    
+    const orders = await db.collection("orders")
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
+    
+    res.json(orders);
+  } catch (error) {
+    console.error("Error fetching orders:", error);
+    res.status(500).json({ message: "Failed to fetch orders" });
+  }
+});
+
+// Get order statistics
+app.get('/api/orders/stats', authMiddleware, async (req, res) => {
+  try {
+    // Check if user is admin
+    const user = await db.collection("users").findOne({ 
+      email: req.user.email 
+    });
+    
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    
+    // Get total orders
+    const totalOrders = await db.collection("orders").countDocuments();
+    
+    // Get total revenue
+    const revenueResult = await db.collection("orders").aggregate([
+      { $match: { total: { $exists: true, $ne: null } } },
+      { $group: { _id: null, total: { $sum: "$total" } } }
+    ]).toArray();
+    
+    const totalRevenue = revenueResult[0]?.total || 0;
+    
+    // Get orders by status
+    const ordersByStatus = await db.collection("orders").aggregate([
+      { 
+        $group: { 
+          _id: "$status", 
+          count: { $sum: 1 } 
+        } 
+      }
+    ]).toArray();
+    
+    // Convert to array format for frontend
+    const statusDistribution = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].map(status => {
+      const statusData = ordersByStatus.find(s => s._id === status);
+      return {
+        status,
+        count: statusData?.count || 0
+      };
+    });
+    
+    // Get recent monthly stats (last 6 months)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    
+    const monthlyStats = await db.collection("orders").aggregate([
+      {
+        $match: {
+          createdAt: { $gte: sixMonthsAgo }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$createdAt" },
+            month: { $month: "$createdAt" }
+          },
+          count: { $sum: 1 },
+          revenue: { $sum: "$total" }
+        }
+      },
+      { 
+        $sort: { 
+          "_id.year": 1, 
+          "_id.month": 1 
+        } 
+      }
+    ]).toArray();
+    
+    res.json({
+      totalOrders,
+      totalRevenue,
+      ordersByStatus: statusDistribution,
+      monthlyStats: monthlyStats.map(stat => ({
+        month: `${stat._id.year}-${String(stat._id.month).padStart(2, '0')}`,
+        count: stat.count,
+        revenue: stat.revenue || 0
+      }))
+    });
+  } catch (error) {
+    console.error("Error fetching order stats:", error);
+    res.status(500).json({ message: "Failed to fetch order statistics" });
+  }
+});
+
+// Update order status
+app.put('/api/orders/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    // Check if user is admin
+    const user = await db.collection("users").findOne({ 
+      email: req.user.email 
+    });
+    
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    
+    const result = await db.collection("orders").updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          status: status,
+          updatedAt: new Date()
+        } 
+      }
+    );
+    
+    if (!result.matchedCount) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    
+    res.json({ message: "Order status updated successfully" });
+  } catch (error) {
+    console.error("Error updating order:", error);
+    res.status(500).json({ message: "Failed to update order" });
+  }
+});
+
+// Delete order
+app.delete('/api/orders/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if user is admin
+    const user = await db.collection("users").findOne({ 
+      email: req.user.email 
+    });
+    
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    
+    const result = await db.collection("orders").deleteOne({
+      _id: new ObjectId(id)
+    });
+    
+    if (!result.deletedCount) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    
+    res.json({ message: "Order deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting order:", error);
+    res.status(500).json({ message: "Failed to delete order" });
+  }
+});
+
+// Get order by ID
+app.get('/api/orders/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const order = await db.collection("orders").findOne({
+      _id: new ObjectId(id)
+    });
+    
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    
+    res.json(order);
+  } catch (error) {
+    console.error("Error fetching order:", error);
+    res.status(500).json({ message: "Failed to fetch order" });
+  }
+});
 
   app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
 }
