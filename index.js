@@ -38,8 +38,8 @@ const adminMiddleware = require('./middleware/admin');
 // MAIN CONNECT FUNCTION
 async function connectDB() {
   try {
-    await client.connect();
-    console.log("🔥 MongoDB Connected Successfully!");
+    // await client.connect();
+    // console.log("🔥 MongoDB Connected Successfully!");
 
     // Check if wishlist collection exists, if not create it
     const db = client.db(dbName);
