@@ -1,6 +1,7 @@
 const express = require('express');
 const { MongoClient, ObjectId, ServerApiVersion } = require('mongodb');
 const cors = require('cors');
+const admin = require('firebase-admin');
 require('dotenv').config();
 
 const app = express();
@@ -9,6 +10,12 @@ app.use(cors({
   origin: "http://localhost:5173",
   credentials: true
 }));
+
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8');
+const serviceAccount = JSON.parse(decoded);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
 const port = 5000;
 const uri = process.env.MONGODB_URI;
