@@ -1,7 +1,6 @@
 const express = require('express');
 const { MongoClient, ObjectId, ServerApiVersion } = require('mongodb');
 const cors = require('cors');
-const admin = require('firebase-admin');
 require('dotenv').config();
 
 const app = express();
@@ -11,11 +10,6 @@ app.use(cors({
   credentials: true
 }));
 
-const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8');
-const serviceAccount = JSON.parse(decoded);
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
 
 const port = 5000;
 const uri = process.env.MONGODB_URI;
@@ -38,8 +32,8 @@ const adminMiddleware = require('./middleware/admin');
 // MAIN CONNECT FUNCTION
 async function connectDB() {
   try {
-    // await client.connect();
-    // console.log("🔥 MongoDB Connected Successfully!");
+    await client.connect();
+    console.log("🔥 MongoDB Connected Successfully!");
 
     // Check if wishlist collection exists, if not create it
     const db = client.db(dbName);
