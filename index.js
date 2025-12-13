@@ -6,7 +6,7 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 app.use(cors({
-  origin: "http://localhost:5173",
+  origin: ["http://localhost:5173", 'https://e-commerce-2d8e1.web.app'],
   credentials: true
 }));
 
